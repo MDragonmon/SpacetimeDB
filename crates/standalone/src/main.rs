@@ -69,6 +69,7 @@ fn main() -> anyhow::Result<()> {
     // Create a multi-threaded run loop
     Builder::new_multi_thread()
         .worker_threads(std::thread::available_parallelism().unwrap().get() / 2)
+        .max_blocking_threads(std::thread::available_parallelism().unwrap().get() / 4)
         .enable_all()
         .build()
         .unwrap()
