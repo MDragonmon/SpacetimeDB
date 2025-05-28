@@ -7,6 +7,7 @@ use super::{
     tx_state::TxState,
 };
 use crate::db::datastore::{
+    error::{DatastoreError, TableError},
     locking_tx_datastore::state_view::{IterByColRangeMutTx, IterMutTx, IterTx},
     traits::{InsertFlags, UpdateFlags},
 };
@@ -25,7 +26,6 @@ use crate::{
         },
         db_metrics::DB_METRICS,
     },
-    error::{DBError, TableError},
     execution_context::ExecutionContext,
 };
 use anyhow::{anyhow, Context};
@@ -47,7 +47,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use thiserror::Error;
 
-pub type Result<T> = std::result::Result<T, DBError>;
+pub type Result<T> = std::result::Result<T, DatastoreError>;
 
 /// Struct contains various database states, each protected by
 /// their own lock. To avoid deadlocks, it is crucial to acquire these locks
@@ -634,7 +634,7 @@ impl MutTxDatastore for Locking {
             .map(|row| {
                 let ptr = row.pointer();
                 let row = StModuleRow::try_from(row)?;
-                Ok::<_, DBError>((ptr, row))
+                Ok::<_, DatastoreError>((ptr, row))
             })
             .transpose()?;
         match old {
@@ -893,7 +893,7 @@ pub enum ReplayError {
     #[error(transparent)]
     Decode(#[from] bsatn::DecodeError),
     #[error(transparent)]
-    Db(#[from] DBError),
+    Db(#[from] DatastoreError),
     #[error(transparent)]
     Any(#[from] anyhow::Error),
 }
@@ -1137,6 +1137,7 @@ fn metadata_from_row(row: RowRef<'_>) -> Result<Metadata> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::db::datastore::error::IndexError;
     use crate::db::datastore::locking_tx_datastore::tx_state::PendingSchemaChange;
     use crate::db::datastore::system_tables::{
         system_tables, StColumnRow, StConstraintData, StConstraintFields, StConstraintRow, StIndexAlgorithm,
@@ -1148,7 +1149,6 @@ mod tests {
     };
     use crate::db::datastore::traits::{IsolationLevel, MutTx};
     use crate::db::datastore::Result;
-    use crate::error::{DBError, IndexError};
     use bsatn::to_vec;
     use core::{fmt, mem};
     use itertools::Itertools;
@@ -2034,7 +2034,7 @@ mod tests {
         insert(&datastore, &mut tx, table_id, &row)?;
         let result = insert(&datastore, &mut tx, table_id, &row);
         match result {
-            Err(DBError::Index(IndexError::UniqueConstraintViolation(_))) => (),
+            Err(DatastoreError::Index(IndexError::UniqueConstraintViolation(_))) => (),
             _ => panic!("Expected an unique constraint violation error."),
         }
         #[rustfmt::skip]
@@ -2051,7 +2051,7 @@ mod tests {
         let mut tx = begin_mut_tx(&datastore);
         let result = insert(&datastore, &mut tx, table_id, &row);
         match result {
-            Err(DBError::Index(IndexError::UniqueConstraintViolation(_))) => (),
+            Err(DatastoreError::Index(IndexError::UniqueConstraintViolation(_))) => (),
             _ => panic!("Expected an unique constraint violation error."),
         }
         #[rustfmt::skip]
@@ -2119,6 +2119,30 @@ mod tests {
     }
 
     #[test]
+    fn test_create_index_ignores_deleted_committed_rows() -> ResultTest<()> {
+        // Setup a table, insert a row, and commit.
+        let (datastore, mut tx, table_id) = setup_table()?;
+        let row_to_delete = u32_str_u32(1, "Foo", 18); // 1 to avoid autoinc.
+        insert(&datastore, &mut tx, table_id, &row_to_delete)?;
+        commit(&datastore, tx)?;
+
+        // Delete `row` but don't commit.
+        let mut tx = begin_mut_tx(&datastore);
+        assert!(tx.delete_by_row_value(table_id, &row_to_delete)?);
+        // Ensure that deleting again is a no-op.
+        assert!(!tx.delete_by_row_value(table_id, &row_to_delete)?);
+
+        // Insert a row that could conflict with the deleted one.
+        let row_potential_conflict = u32_str_u32(1, "Bar", 18);
+        insert(&datastore, &mut tx, table_id, &row_potential_conflict)?;
+
+        // Create the unique index on the last field. This should not error.
+        create_foo_age_idx_btree(&datastore, &mut tx, table_id)?;
+
+        Ok(())
+    }
+
+    #[test]
     fn test_create_index_pre_commit() -> ResultTest<()> {
         let (datastore, tx, table_id) = setup_table()?;
         commit(&datastore, tx)?;
@@ -2139,7 +2163,7 @@ mod tests {
         let row = u32_str_u32(0, "Bar", 18); // 0 will be ignored.
         let result = insert(&datastore, &mut tx, table_id, &row);
         match result {
-            Err(DBError::Index(IndexError::UniqueConstraintViolation(_))) => (),
+            Err(DatastoreError::Index(IndexError::UniqueConstraintViolation(_))) => (),
             e => panic!("Expected an unique constraint violation error but got {e:?}."),
         }
         #[rustfmt::skip]
@@ -2164,7 +2188,7 @@ mod tests {
         let row = u32_str_u32(0, "Bar", 18); // 0 will be ignored.
         let result = insert(&datastore, &mut tx, table_id, &row);
         match result {
-            Err(DBError::Index(IndexError::UniqueConstraintViolation(_))) => (),
+            Err(DatastoreError::Index(IndexError::UniqueConstraintViolation(_))) => (),
             _ => panic!("Expected an unique constraint violation error."),
         }
         #[rustfmt::skip]
