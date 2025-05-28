@@ -440,6 +440,8 @@ impl<T: Module> ModuleInstance for AutoReplacingModuleInstance<T> {
     }
 }
 
+type ModuleInstanceFn = Box<dyn FnOnce(&mut dyn ModuleInstance) + Send>;
+
 #[derive(Clone)]
 pub struct ModuleHost {
     pub info: Arc<ModuleInfo>,
@@ -447,7 +449,7 @@ pub struct ModuleHost {
     /// Called whenever a reducer call on this host panics.
     on_panic: Arc<dyn Fn() + Send + Sync + 'static>,
     // job_tx: mpsc::Sender<Box<dyn FnOnce() + Send>>,
-    job_tx: mpsc::Sender<Box<dyn FnOnce(&mut dyn ModuleInstance) + Send>>,
+    job_tx: mpsc::Sender<ModuleInstanceFn>,
 }
 
 impl fmt::Debug for ModuleHost {
@@ -473,6 +475,7 @@ struct HostControllerActor<T: Module> {
 }
 
 impl<T: Module> HostControllerActor<T> {
+    #[allow(unused)]
     fn spinup_new_instance(&self) {
         let (module, instance_pool) = (self.module.clone(), self.instance_pool.clone());
         rayon::spawn(move || {
@@ -489,6 +492,7 @@ impl<T: Module> HostControllerActor<T> {
 
 /// runs future A and future B concurrently. if A completes before B, B is cancelled. if B completes
 /// before A, A is polled to completion
+#[allow(unused)]
 async fn select_first<A: Future, B: Future<Output = ()>>(fut_a: A, fut_b: B) -> A::Output {
     tokio::select! {
         ret = fut_a => ret,
@@ -546,7 +550,7 @@ pub struct WeakModuleHost {
     info: Arc<ModuleInfo>,
     inner: Weak<dyn DynModuleHost>,
     on_panic: Weak<dyn Fn() + Send + Sync + 'static>,
-    tx: mpsc::WeakSender<Box<dyn FnOnce(&mut dyn ModuleInstance) + Send>>,
+    tx: mpsc::WeakSender<ModuleInstanceFn>,
 }
 
 #[derive(Debug)]
@@ -607,11 +611,7 @@ pub enum ClientConnectedError {
 }
 
 impl ModuleHost {
-    pub(super) fn new(
-        module: impl Module,
-        on_panic: impl Fn() + Send + Sync + 'static,
-        core: DatabaseCore,
-    ) -> Self {
+    pub(super) fn new(module: impl Module, on_panic: impl Fn() + Send + Sync + 'static, core: DatabaseCore) -> Self {
         let info = module.info();
         let instance_pool = LendingPool::new();
         let module = Arc::new(module);
