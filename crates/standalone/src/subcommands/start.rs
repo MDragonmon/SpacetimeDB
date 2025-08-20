@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use crate::subcommands::archive::ArchiveUrl;
 use crate::{StandaloneEnv, StandaloneOptions};
 use anyhow::Context;
 use axum::extract::DefaultBodyLimit;
@@ -65,6 +66,13 @@ pub fn cli() -> clap::Command {
                 .requires("jwt_pub_key_path")
                 .help("The path to the private jwt key for issuing identities")
                 .value_parser(clap::value_parser!(PrivKeyPath)),
+        )
+        .arg(
+            Arg::new("archive-url")
+                .long("archive-url")
+                .value_name("s3://bucket[/prefix/]")
+                .help("Enable commitlog archiving to S3 at the given bucket/prefix (e.g., s3://my-bucket/prod/cluster-a/)")
+                .value_parser(clap::value_parser!(ArchiveUrl)),
         )
         .arg(Arg::new("in_memory").long("in-memory").action(SetTrue).help(
             "If specified the database will run entirely in memory. After the process exits all data will be lost.",
