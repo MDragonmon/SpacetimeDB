@@ -13,11 +13,11 @@ struct CLIENT_UNREAL_API FCircleType
 {
     GENERATED_BODY()
 
-    // NOTE: uint32 field not exposed to Blueprint due to non-blueprintable elements
-    uint32 EntityId;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SpacetimeDB")
+    int32 EntityId;
 
-    // NOTE: uint32 field not exposed to Blueprint due to non-blueprintable elements
-    uint32 PlayerId;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SpacetimeDB")
+    int32 PlayerId;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SpacetimeDB")
     FDbVector2Type Direction;

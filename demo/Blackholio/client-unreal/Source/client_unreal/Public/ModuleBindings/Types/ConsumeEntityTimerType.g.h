@@ -18,11 +18,11 @@ struct CLIENT_UNREAL_API FConsumeEntityTimerType
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SpacetimeDB")
     FSpacetimeDBScheduleAt ScheduledAt;
 
-    // NOTE: uint32 field not exposed to Blueprint due to non-blueprintable elements
-    uint32 ConsumedEntityId;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SpacetimeDB")
+    int32 ConsumedEntityId;
 
-    // NOTE: uint32 field not exposed to Blueprint due to non-blueprintable elements
-    uint32 ConsumerEntityId;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SpacetimeDB")
+    int32 ConsumerEntityId;
 
     FORCEINLINE bool operator==(const FConsumeEntityTimerType& Other) const
     {
