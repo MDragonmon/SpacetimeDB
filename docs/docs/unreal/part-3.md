@@ -705,7 +705,7 @@ void AGameManager::HandleSubscriptionApplied(FSubscriptionEventContext& Context)
 :::
 :::server-blueprint
 
-Open `BP_GameMode` and update to the following:
+Open `BP_GameManager` and update to the following:
 
 1. Add a **Variable**
     - Change **Variable Name** to `BorderThickness`
@@ -1504,7 +1504,7 @@ Add **Function** named `MassToDiameter` as follows:
 ![Add MassToDiameter](./part-3-02-blueprint-entity-8.png)
 
 - Add **Input** as `Mass` with **Integer** as the type.
-- Add **Output** as `Diameer` with **Float** as the type.
+- Add **Output** as `Diameter` with **Float** as the type.
 
 Add **Function** named `OnUpdated` as follows:
 <!-- ![Add OnUpdated](https://tmp-unreal-engine-tutorial-images.nyc3.digitaloceanspaces.com/part-3-02-blueprint-entity-3.png) -->
@@ -1561,6 +1561,8 @@ Add **Function** named `GetGameManager` as follows:
 <!-- ![Add GetGameManager](https://tmp-unreal-engine-tutorial-images.nyc3.digitaloceanspaces.com/part-3-02-blueprint-player-2.png) -->
 ![Add GetGameManager](./part-3-02-blueprint-player-2.png)
 
+- Add **Output** as `GameManager` with **BP Game Manager** as the type.
+
 Add **Function** named `Initialize` as follows:
 <!-- ![Add Initialize](https://tmp-unreal-engine-tutorial-images.nyc3.digitaloceanspaces.com/part-3-02-blueprint-player-3.png) -->
 ![Add Initialize](./part-3-02-blueprint-player-3.png)
@@ -1583,7 +1585,7 @@ Add **Function** named `CenterOfMass` as follows:
 <!-- ![Add CenterOfMass](https://tmp-unreal-engine-tutorial-images.nyc3.digitaloceanspaces.com/part-3-02-blueprint-player-6.png) -->
 ![Add CenterOfMass](./part-3-02-blueprint-player-6.png)
 
-- Add **Input** as `Center` with **Vector** as the type.
+- Add **Output** as `Center` with **Vector** as the type.
 - Add **Local Variable** as `WeightedPosition` with **Vector** as the type.
 - Add **Local Variable** as `TotalMass` with **Float** as the type.
 
@@ -1596,6 +1598,7 @@ Add **Function** named `GetUsername` as follows:
 ![Add GetUsername](./part-3-02-blueprint-player-10.png)
 
 - Add **Output** as `Output` with **String** as the type.
+- Check **Pure**
 
 Update **Event Tick** to:
 <!-- ![Update Event Tick](https://tmp-unreal-engine-tutorial-images.nyc3.digitaloceanspaces.com/part-3-02-blueprint-player-8.png) -->
@@ -2052,9 +2055,9 @@ FVector2D ABlackholioPlayerController::ComputeDesiredDirection() const
 Last update `BP_PlayerController` for the basics by adding the following **Variables**:
 
 1. Add `GameManger`
-    - Change **Variable Type** to **BP Game Manager -> Class Reference**
+    - Change **Variable Type** to **BP Game Manager -> Object Reference**
 2. Add `LocalPlayer`
-    - Change **Variable Type** to **BP Player Pawn -> Class Reference**
+    - Change **Variable Type** to **BP Player Pawn -> Object Reference**
 3. Add `LastMovementSendTime`
     - Change **Variable Type** to **Float**
 4. Add `SendUpdateFrequency`
@@ -2064,6 +2067,8 @@ Last update `BP_PlayerController` for the basics by adding the following **Varia
 Add **Function** named `GetGameManager` as follows:
 <!-- ![Add GetGameManager](https://tmp-unreal-engine-tutorial-images.nyc3.digitaloceanspaces.com/part-3-04-blueprint-playercontroller-1.png) -->
 ![Add GetGameManager](./part-3-04-blueprint-playercontroller-1.png)
+
+- Add **Output** as `GameManager` with **BP Game Manager** as the type.
 
 Override **Function -> On Possess** as follows:
 <!-- ![Add GetGameManager](https://tmp-unreal-engine-tutorial-images.nyc3.digitaloceanspaces.com/part-3-04-blueprint-playercontroller-2.png) -->
@@ -2126,6 +2131,7 @@ Open up `BP_GameManager` and edit `OnApplied_Event` to match the following:
 
 ### Trying It Out
 
+:::server-cpp
 Almost everything is ready to play. Before launching, set up the spawning classes:  
 
 1. Open `BP_GameManager`.  
@@ -2136,8 +2142,6 @@ Almost everything is ready to play. Before launching, set up the spawning classe
 
 > **Reminder:** Compile and save your changes.
 
-:::server-cpp
-
 Next, wire up `SetUsername` to update the Nameplate:  
 
 1. Open `BP_Circle`.
@@ -2147,6 +2151,15 @@ Next, wire up `SetUsername` to update the Nameplate:
 
 :::
 :::server-blueprint
+Almost everything is ready to play. Before launching, set up the spawning classes:  
+
+1. Open `BP_GameManager`.  
+2. Make sure the spawning classes are set:
+   - **Circle Class** → `BP_Circle`  
+   - **Food Class** → `BP_Food`  
+   - **Player Class** → `BP_PlayerPawn`  
+
+> **Reminder:** Compile and save your changes.
 :::
 
 ---

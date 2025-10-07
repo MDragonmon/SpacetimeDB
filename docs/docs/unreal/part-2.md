@@ -664,6 +664,8 @@ In our `HandleConnect` callback we build a subscription and are calling `Subscri
 :::
 :::server-blueprint
 
+> **NOTE:** Close down, rebuild, and relaunch the project to update the plugin and generated code references.
+
 To start off edit `BP_GameMode` to provide easy access to the `BP_GameManager`.
 
 Open `BP_GameMode` and update to the following:
