@@ -1,12 +1,14 @@
 #![deny(unsafe_op_in_unsafe_fn)]
 
 use crate::table::IndexAlgo;
-use crate::{sys, IterBuf, ReducerContext, ReducerResult, SpacetimeType, Table};
+use crate::{
+    sys, AnonymousViewContext, IterBuf, LocalReadOnly, ReducerContext, ReducerResult, SpacetimeType, Table, ViewContext,
+};
 pub use spacetimedb_lib::db::raw_def::v9::Lifecycle as LifecycleReducer;
 use spacetimedb_lib::db::raw_def::v9::{RawIndexAlgorithm, RawModuleDefV9Builder, TableType};
 use spacetimedb_lib::de::{self, Deserialize, Error as _, SeqProductAccess};
 use spacetimedb_lib::sats::typespace::TypespaceBuilder;
-use spacetimedb_lib::sats::{impl_deserialize, impl_serialize, ProductTypeElement};
+use spacetimedb_lib::sats::{impl_deserialize, impl_serialize, AlgebraicTypeRef, ProductTypeElement};
 use spacetimedb_lib::ser::{Serialize, SerializeSeqProduct};
 use spacetimedb_lib::{bsatn, ConnectionId, Identity, ProductType, RawModuleDef, Timestamp};
 use spacetimedb_primitives::*;
@@ -43,8 +45,43 @@ pub trait Reducer<'de, A: Args<'de>> {
     fn invoke(&self, ctx: &ReducerContext, args: A) -> ReducerResult;
 }
 
+pub fn invoke_view<'a, Ctx: ViewContextArg, V, A, R, T>(view: V, ctx: Ctx, args: &'a [u8]) -> Vec<u8>
+where
+    V: View<'a, Ctx, A, R, T>,
+    A: Args<'a>,
+    R: IntoVec<T>,
+    T: SpacetimeType + Serialize,
+{
+    let SerDeArgs(args) = bsatn::from_slice(args).expect("unable to decode args");
+    let rows = view.invoke(&ctx, args).into_vec();
+    let mut buf = IterBuf::take();
+    buf.serialize_into(&rows).expect("unable to encode view rows");
+    std::mem::take(&mut *buf)
+}
+/// A trait for types representing the *execution logic* of a view.
+#[diagnostic::on_unimplemented(
+    message = "invalid view signature",
+    label = "this view signature is not valid",
+    note = "",
+    note = "view signatures must match:",
+    note = "    `Fn(&ViewContext | &AnonymousViewContext, [T1, ...]) -> U`",
+    note = "where `U` is `T`, `Option<T>`, or `Vec<T>`, and each `Ti` implements `SpacetimeType`.",
+    note = ""
+)]
+pub trait View<'de, Ctx: ViewContextArg, A, R, T>
+where
+    A: Args<'de>,
+    R: IntoVec<T>,
+    T: SpacetimeType + Serialize,
+{
+    fn invoke(&self, ctx: &Ctx, args: A) -> R;
+}
+
 /// A trait for types that can *describe* a callable function such as a reducer or view.
 pub trait FnInfo {
+    /// The context of the function - e.g. [`ReducerContext`], [`ViewContext`]
+    type Ctx;
+
     /// The type of function to invoke.
     type Invoke;
 
@@ -60,8 +97,10 @@ pub trait FnInfo {
     /// The function to invoke.
     const INVOKE: Self::Invoke;
 
+    fn push(module: &mut ModuleBuilder, f: Self::Invoke);
+
     /// The return type of this function.
-    fn return_type(typespace: &mut impl TypespaceBuilder) -> Option<ProductType>;
+    fn return_type(typespace: &mut impl TypespaceBuilder) -> Option<AlgebraicTypeRef>;
 }
 
 /// A trait of types representing the arguments of a reducer.
@@ -75,8 +114,8 @@ pub trait Args<'de>: Sized {
     /// Serialize the arguments in `self` into the sequence `prod` according to the type `S`.
     fn serialize_seq_product<S: SerializeSeqProduct>(&self, prod: &mut S) -> Result<(), S::Error>;
 
-    /// Returns the schema for this reducer provided a `typespace`.
-    fn schema<I: FnInfo<Invoke = ReducerFn>>(typespace: &mut impl TypespaceBuilder) -> ProductType;
+    /// Returns the schema of the args for this function provided a `typespace`.
+    fn schema<I: FnInfo>(typespace: &mut impl TypespaceBuilder) -> ProductType;
 }
 
 /// A trait of types representing the result of executing a reducer.
@@ -102,6 +141,32 @@ impl<E: fmt::Display> IntoReducerResult for Result<(), E> {
     }
 }
 
+#[diagnostic::on_unimplemented(message = "A view must return either `T`, `Option<T>`, or `Vec<T>`")]
+pub trait IntoVec<T> {
+    #[doc(hidden)]
+    const _ITEM: () = ();
+    type Inner;
+    fn into_vec(self) -> Vec<T>;
+}
+impl<T: SpacetimeType> IntoVec<T> for Vec<T> {
+    type Inner = T;
+    fn into_vec(self) -> Vec<T> {
+        self
+    }
+}
+impl<T: SpacetimeType> IntoVec<T> for Option<T> {
+    type Inner = T;
+    fn into_vec(self) -> Vec<T> {
+        self.into_iter().collect()
+    }
+}
+impl<T: SpacetimeType> IntoVec<T> for T {
+    type Inner = T;
+    fn into_vec(self) -> Vec<T> {
+        vec![self]
+    }
+}
+
 #[diagnostic::on_unimplemented(
     message = "the first argument of a reducer must be `&ReducerContext`",
     label = "first argument must be `&ReducerContext`"
@@ -124,6 +189,54 @@ pub trait ReducerArg {
     const _ITEM: () = ();
 }
 impl<T: SpacetimeType> ReducerArg for T {}
+
+#[diagnostic::on_unimplemented(
+    message = "the first argument of a view must be `&ViewContext` or `&AnonymousViewContext`",
+    label = "first argument must be `&ViewContext` or `&AnonymousViewContext`"
+)]
+pub trait ViewContextArg {
+    #[doc(hidden)]
+    const _ITEM: () = ();
+    const ANONYMOUS: bool;
+
+    type Invoke;
+    fn push(module: &mut ModuleBuilder, f: Self::Invoke);
+}
+impl ViewContextArg for ViewContext {
+    const ANONYMOUS: bool = false;
+    type Invoke = ViewFn;
+
+    fn push(module: &mut ModuleBuilder, f: Self::Invoke) {
+        module.views.push(f);
+    }
+}
+impl ViewContextArg for AnonymousViewContext {
+    const ANONYMOUS: bool = true;
+    type Invoke = AnonFn;
+
+    fn push(module: &mut ModuleBuilder, f: Self::Invoke) {
+        module.views_anon.push(f);
+    }
+}
+impl<T: ViewContextArg> ViewContextArg for &T {
+    const ANONYMOUS: bool = T::ANONYMOUS;
+    type Invoke = T::Invoke;
+
+    fn push(module: &mut ModuleBuilder, f: Self::Invoke) {
+        T::push(module, f);
+    }
+}
+
+/// A trait of types that can be an argument of a view.
+#[diagnostic::on_unimplemented(
+    message = "the view argument `{Self}` does not implement `SpacetimeType`",
+    note = "if you own the type, try adding `#[derive(SpacetimeType)]` to its definition"
+)]
+pub trait ViewArg {
+    #[doc(hidden)]
+    const _ITEM: () = ();
+}
+impl<T: SpacetimeType> ViewArg for T {}
 
 /// Assert that a reducer type-checks with a given type.
 pub const fn scheduled_reducer_typecheck<'de, Row>(_x: impl ReducerForScheduledTable<'de, Row>)
@@ -270,6 +383,34 @@ macro_rules! impl_reducer {
             }
         }
 
+        // Implement `View<..., ContextArg>` for the tuple type `($($T,)*)`.
+        impl<'de, Func, Retn, Elem, $($T: SpacetimeType + Deserialize<'de> + Serialize),*> View<'de, ViewContext, ($($T,)*), Retn, Elem> for Func
+        where
+            Func: Fn(&ViewContext, $($T),*) -> Retn,
+            Retn: IntoVec<Elem>,
+            Elem: SpacetimeType + Serialize,
+        {
+            #[allow(non_snake_case)]
+            fn invoke(&self, ctx: &ViewContext, args: ($($T,)*)) -> Retn {
+                let ($($T,)*) = args;
+                self(ctx, $($T),*)
+            }
+        }
+
+        // Implement `View<..., ContextArg>` for the tuple type `($($T,)*)`.
+        impl<'de, Func, Retn, Elem, $($T: SpacetimeType + Deserialize<'de> + Serialize),*> View<'de, AnonymousViewContext, ($($T,)*), Retn, Elem> for Func
+        where
+            Func: Fn(&AnonymousViewContext, $($T),*) -> Retn,
+            Retn: IntoVec<Elem>,
+            Elem: SpacetimeType + Serialize,
+        {
+            #[allow(non_snake_case)]
+            fn invoke(&self, ctx: &AnonymousViewContext, args: ($($T,)*)) -> Retn {
+                let ($($T,)*) = args;
+                self(ctx, $($T),*)
+            }
+        }
+
     };
     // Counts the number of elements in the tuple.
     (@count $($T:ident)*) => {
@@ -376,6 +517,21 @@ pub fn register_reducer<'a, A: Args<'a>, I: FnInfo<Invoke = ReducerFn>>(_: impl 
     })
 }
 
+pub fn register_view<'a, I, A, R, T>(_: impl View<'a, I::Ctx, A, R, T>)
+where
+    I: FnInfo<Ctx: ViewContextArg>,
+    A: Args<'a>,
+    R: IntoVec<T>,
+    T: SpacetimeType + Serialize,
+{
+    register_describer(|module| {
+        let params = A::schema::<I>(&mut module.inner);
+        let return_type = I::return_type(&mut module.inner).unwrap();
+        module.inner.add_view(I::NAME, I::Ctx::ANONYMOUS, params, return_type);
+        I::push(module, I::INVOKE);
+    })
+}
+
 /// Registers a row-level security policy.
 pub fn register_row_level_security(sql: &'static str) {
     register_describer(|module| {
@@ -385,11 +541,15 @@ pub fn register_row_level_security(sql: &'static str) {
 
 /// A builder for a module.
 #[derive(Default)]
-struct ModuleBuilder {
+pub struct ModuleBuilder {
     /// The module definition.
     inner: RawModuleDefV9Builder,
     /// The reducers of the module.
     reducers: Vec<ReducerFn>,
+    /// The client specific views of the module.
+    views: Vec<ViewFn>,
+    /// The anonymous views of the module.
+    views_anon: Vec<AnonFn>,
 }
 
 // Not actually a mutex; because WASM is single-threaded this basically just turns into a refcell.
@@ -399,6 +559,14 @@ static DESCRIBERS: Mutex<Vec<Box<dyn DescriberFn>>> = Mutex::new(Vec::new());
 /// and returns a result with a possible error message.
 pub type ReducerFn = fn(ReducerContext, &[u8]) -> ReducerResult;
 static REDUCERS: OnceLock<Vec<ReducerFn>> = OnceLock::new();
+
+/// A view function takes in `(ViewContext, Args)` and returns a Vec of bytes.
+pub type ViewFn = fn(ViewContext, &[u8]) -> Vec<u8>;
+static VIEWS: OnceLock<Vec<ViewFn>> = OnceLock::new();
+
+/// A view function takes in `(AnonymousViewContext, Args)` and returns a Vec of bytes.
+pub type AnonFn = fn(AnonymousViewContext, &[u8]) -> Vec<u8>;
+static VIEWS_ANON: OnceLock<Vec<AnonFn>> = OnceLock::new();
 
 /// Called by the host when the module is initialized
 /// to describe the module into a serialized form that is returned.
@@ -428,8 +596,10 @@ extern "C" fn __describe_module__(description: BytesSink) {
     let module_def = RawModuleDef::V9(module_def);
     let bytes = bsatn::to_vec(&module_def).expect("unable to serialize typespace");
 
-    // Write the set of reducers.
+    // Write the set of reducers and views.
     REDUCERS.set(module.reducers).ok().unwrap();
+    VIEWS.set(module.views).ok().unwrap();
+    VIEWS_ANON.set(module.views_anon).ok().unwrap();
 
     // Write the bsatn data into the sink.
     write_to_sink(description, &bytes);
@@ -514,6 +684,80 @@ extern "C" fn __call_reducer__(
             errno::HOST_CALL_FAILURE.get() as i16
         }
     }
+}
+
+/// Called by the host to execute an anonymous view.
+///
+/// The `args` is a `BytesSource`, registered on the host side,
+/// which can be read with `bytes_source_read`.
+/// The contents of the buffer are the BSATN-encoding of the arguments to the view.
+/// In the case of empty arguments, `args` will be 0, that is, invalid.
+///
+/// The output of the view is written to a `BytesSink`,
+/// registered on the host side, with `bytes_sink_write`.
+#[no_mangle]
+extern "C" fn __call_view_anon__(id: usize, args: BytesSource, sink: BytesSink) -> i16 {
+    let views = VIEWS_ANON.get().unwrap();
+    write_to_sink(
+        sink,
+        &with_read_args(args, |args| {
+            views[id](AnonymousViewContext { db: LocalReadOnly {} }, args)
+        }),
+    );
+    0
+}
+
+/// Called by the host to execute an anonymous view.
+///
+/// The `args` is a `BytesSource`, registered on the host side,
+/// which can be read with `bytes_source_read`.
+/// The contents of the buffer are the BSATN-encoding of the arguments to the view.
+/// In the case of empty arguments, `args` will be 0, that is, invalid.
+///
+/// The output of the view is written to a `BytesSink`,
+/// registered on the host side, with `bytes_sink_write`.
+#[no_mangle]
+extern "C" fn __call_view__(
+    id: usize,
+    sender_0: u64,
+    sender_1: u64,
+    sender_2: u64,
+    sender_3: u64,
+    conn_id_0: u64,
+    conn_id_1: u64,
+    args: BytesSource,
+    sink: BytesSink,
+) -> i16 {
+    // Piece together `sender_i` into an `Identity`.
+    let sender = [sender_0, sender_1, sender_2, sender_3];
+    let sender: [u8; 32] = bytemuck::must_cast(sender);
+    let sender = Identity::from_byte_array(sender); // The LITTLE-ENDIAN constructor.
+
+    // Piece together `conn_id_i` into a `ConnectionId`.
+    // The all-zeros `ConnectionId` (`ConnectionId::ZERO`) is interpreted as `None`.
+    let conn_id = [conn_id_0, conn_id_1];
+    let conn_id: [u8; 16] = bytemuck::must_cast(conn_id);
+    let conn_id = ConnectionId::from_le_byte_array(conn_id); // The LITTLE-ENDIAN constructor.
+    let conn_id = (conn_id != ConnectionId::ZERO).then_some(conn_id);
+
+    let views = VIEWS.get().unwrap();
+    let db = LocalReadOnly {};
+    let connection_id = conn_id;
+
+    write_to_sink(
+        sink,
+        &with_read_args(args, |args| {
+            views[id](
+                ViewContext {
+                    sender,
+                    connection_id,
+                    db,
+                },
+                args,
+            )
+        }),
+    );
+    0
 }
 
 /// Run `logic` with `args` read from the host into a `&[u8]`.

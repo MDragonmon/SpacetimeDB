@@ -364,6 +364,7 @@ pub struct RawRowLevelSecurityDefV9 {
 #[non_exhaustive]
 pub enum RawMiscModuleExportV9 {
     ColumnDefaultValue(RawColumnDefaultValueV9),
+    View(RawViewDefV9),
 }
 
 /// Marks a particular table's column as having a particular default.
@@ -379,6 +380,51 @@ pub struct RawColumnDefaultValueV9 {
     /// A BSATN-encoded [`AlgebraicValue`] valid at the table column's type.
     /// (We cannot use `AlgebraicValue` directly as it isn't `Spacetimetype`.)
     pub value: Box<[u8]>,
+}
+
+/// A view definition.
+#[derive(Debug, Clone, SpacetimeType)]
+#[sats(crate = crate)]
+#[cfg_attr(feature = "test", derive(PartialEq, Eq, PartialOrd, Ord))]
+pub struct RawViewDefV9 {
+    /// The name of the view.
+    pub name: RawIdentifier,
+
+    /// Is this view anonymous?
+    pub view_type: ViewType,
+
+    /// The types and optional names of the parameters, in order.
+    /// This `ProductType` need not be registered in the typespace.
+    pub params: ProductType,
+
+    /// This is the single source of truth for the views's columns.
+    /// All elements of the `ProductType` must have names.
+    pub return_type: AlgebraicTypeRef,
+
+    /// Currently unused, but we may want to define indexes on materialized views in the future.
+    pub indexes: Vec<RawIndexDefV9>,
+
+    /// Whether this view is public or private.
+    /// Only public is supported right now.
+    /// Private views may be added in the future.
+    pub table_access: TableAccess,
+}
+
+/// The view's outer return type: `T`, `Option<T>`, or `Vec<T>`
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, SpacetimeType)]
+#[sats(crate = crate)]
+pub enum RowsReturned {
+    One,
+    AtMostOne,
+    Many,
+}
+
+/// Is this a `AnonymousViewContext` or a `ViewContext`?
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, SpacetimeType)]
+#[sats(crate = crate)]
+pub enum ViewType {
+    Anonymous,
+    Sender,
 }
 
 /// A type declaration.
@@ -629,6 +675,28 @@ impl RawModuleDefV9Builder {
             params,
             lifecycle,
         });
+    }
+
+    pub fn add_view(
+        &mut self,
+        name: impl Into<RawIdentifier>,
+        is_anonymous: bool,
+        params: ProductType,
+        return_type: AlgebraicTypeRef,
+    ) {
+        let name = name.into();
+        let mut view_type = ViewType::Sender;
+        if is_anonymous {
+            view_type = ViewType::Anonymous;
+        }
+        self.module.misc_exports.push(RawMiscModuleExportV9::View(RawViewDefV9 {
+            name,
+            view_type,
+            params,
+            return_type,
+            indexes: vec![],
+            table_access: TableAccess::Public,
+        }));
     }
 
     /// Add a row-level security policy to the module.
