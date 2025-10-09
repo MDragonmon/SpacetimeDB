@@ -391,14 +391,18 @@ pub struct RawViewDefV9 {
     pub name: RawIdentifier,
 
     /// Is this view anonymous?
-    pub view_type: ViewType,
+    pub is_anonymous: bool,
 
     /// The types and optional names of the parameters, in order.
     /// This `ProductType` need not be registered in the typespace.
     pub params: ProductType,
 
-    /// This is the single source of truth for the views's columns.
+    /// A reference to a `ProductType` containing the columns of this view.
+    /// This is the single source of truth for the view's columns.
     /// All elements of the `ProductType` must have names.
+    ///
+    /// Like all types in the module, this must have the [default element ordering](crate::db::default_element_ordering),
+    /// UNLESS a custom ordering is declared via a `RawTypeDefv9` for this type.
     pub return_type: AlgebraicTypeRef,
 
     /// Currently unused, but we may want to define indexes on materialized views in the future.
@@ -407,24 +411,7 @@ pub struct RawViewDefV9 {
     /// Whether this view is public or private.
     /// Only public is supported right now.
     /// Private views may be added in the future.
-    pub table_access: TableAccess,
-}
-
-/// The view's outer return type: `T`, `Option<T>`, or `Vec<T>`
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, SpacetimeType)]
-#[sats(crate = crate)]
-pub enum RowsReturned {
-    One,
-    AtMostOne,
-    Many,
-}
-
-/// Is this a `AnonymousViewContext` or a `ViewContext`?
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, SpacetimeType)]
-#[sats(crate = crate)]
-pub enum ViewType {
-    Anonymous,
-    Sender,
+    pub access: TableAccess,
 }
 
 /// A type declaration.
@@ -684,18 +671,13 @@ impl RawModuleDefV9Builder {
         params: ProductType,
         return_type: AlgebraicTypeRef,
     ) {
-        let name = name.into();
-        let mut view_type = ViewType::Sender;
-        if is_anonymous {
-            view_type = ViewType::Anonymous;
-        }
         self.module.misc_exports.push(RawMiscModuleExportV9::View(RawViewDefV9 {
-            name,
-            view_type,
+            name: name.into(),
+            is_anonymous,
             params,
             return_type,
             indexes: vec![],
-            table_access: TableAccess::Public,
+            access: TableAccess::Public,
         }));
     }
 

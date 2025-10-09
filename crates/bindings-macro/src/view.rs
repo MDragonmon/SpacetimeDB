@@ -63,7 +63,7 @@ pub(crate) fn view_impl(_args: ViewArgs, original_function: &ItemFn) -> syn::Res
         .iter()
         .map(|arg| match arg {
             FnArg::Typed(arg) => Ok(arg),
-            FnArg::Receiver(_) => Err(syn::Error::new_spanned(arg, "expected typed argument")),
+            FnArg::Receiver(_) => Err(syn::Error::new_spanned(arg, "`self` arguments not allowed in views")),
         })
         .collect::<syn::Result<Vec<_>>>()?;
 
@@ -83,7 +83,7 @@ pub(crate) fn view_impl(_args: ViewArgs, original_function: &ItemFn) -> syn::Res
     let ctx_ty = arg_tys.first().ok_or_else(|| {
         syn::Error::new_spanned(
             original_function.sig.fn_token,
-            "views must take `&ViewContext` or `&AnonymousViewContext` as the first parameter",
+            "`&ViewContext` or `&AnonymousViewContext` must always be the first parameter of a view",
         )
     })?;
 
@@ -95,7 +95,7 @@ pub(crate) fn view_impl(_args: ViewArgs, original_function: &ItemFn) -> syn::Res
     .ok_or_else(|| {
         syn::Error::new_spanned(
             original_function.sig.fn_token,
-            "views must return one of `T`, `Option<T>`, or `Vec<T>`",
+            "views must return one of `T`, `Option<T>`, or `Vec<T>` where `T` is a `SpacetimeType`",
         )
     })?;
 
@@ -123,7 +123,6 @@ pub(crate) fn view_impl(_args: ViewArgs, original_function: &ItemFn) -> syn::Res
         const _: () = {
             fn _assert_args #lt_params () #lt_where_clause {
                   let _ = <#ctx_ty  as spacetimedb::rt::ViewContextArg>::_ITEM;
-                  let _ = <#ret_ty  as spacetimedb::rt::IntoVec>::_ITEM;
                 #(let _ = <#arg_tys as spacetimedb::rt::ViewArg>::_ITEM;)*
             }
         };

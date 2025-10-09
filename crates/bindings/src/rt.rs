@@ -143,27 +143,28 @@ impl<E: fmt::Display> IntoReducerResult for Result<(), E> {
 
 #[diagnostic::on_unimplemented(message = "A view must return either `T`, `Option<T>`, or `Vec<T>`")]
 pub trait IntoVec<T> {
-    #[doc(hidden)]
-    const _ITEM: () = ();
     type Inner;
     fn into_vec(self) -> Vec<T>;
 }
-impl<T: SpacetimeType> IntoVec<T> for Vec<T> {
+
+impl<T: SpacetimeType> IntoVec<T> for T {
     type Inner = T;
     fn into_vec(self) -> Vec<T> {
-        self
+        vec![self]
     }
 }
+
 impl<T: SpacetimeType> IntoVec<T> for Option<T> {
     type Inner = T;
     fn into_vec(self) -> Vec<T> {
         self.into_iter().collect()
     }
 }
-impl<T: SpacetimeType> IntoVec<T> for T {
+
+impl<T: SpacetimeType> IntoVec<T> for Vec<T> {
     type Inner = T;
     fn into_vec(self) -> Vec<T> {
-        vec![self]
+        self
     }
 }
 
@@ -202,6 +203,7 @@ pub trait ViewContextArg {
     type Invoke;
     fn push(module: &mut ModuleBuilder, f: Self::Invoke);
 }
+
 impl ViewContextArg for ViewContext {
     const ANONYMOUS: bool = false;
     type Invoke = ViewFn;
@@ -210,6 +212,7 @@ impl ViewContextArg for ViewContext {
         module.views.push(f);
     }
 }
+
 impl ViewContextArg for AnonymousViewContext {
     const ANONYMOUS: bool = true;
     type Invoke = AnonFn;
@@ -218,6 +221,7 @@ impl ViewContextArg for AnonymousViewContext {
         module.views_anon.push(f);
     }
 }
+
 impl<T: ViewContextArg> ViewContextArg for &T {
     const ANONYMOUS: bool = T::ANONYMOUS;
     type Invoke = T::Invoke;
@@ -383,9 +387,11 @@ macro_rules! impl_reducer {
             }
         }
 
-        // Implement `View<..., ContextArg>` for the tuple type `($($T,)*)`.
-        impl<'de, Func, Retn, Elem, $($T: SpacetimeType + Deserialize<'de> + Serialize),*> View<'de, ViewContext, ($($T,)*), Retn, Elem> for Func
+        // Implement `View<ViewContext, ...>` for the tuple type `($($T,)*)`.
+        impl<'de, Func, Retn, Elem, $($T),*>
+            View<'de, ViewContext, ($($T,)*), Retn, Elem> for Func
         where
+            $($T: SpacetimeType + Deserialize<'de> + Serialize,)*
             Func: Fn(&ViewContext, $($T),*) -> Retn,
             Retn: IntoVec<Elem>,
             Elem: SpacetimeType + Serialize,
@@ -397,9 +403,11 @@ macro_rules! impl_reducer {
             }
         }
 
-        // Implement `View<..., ContextArg>` for the tuple type `($($T,)*)`.
-        impl<'de, Func, Retn, Elem, $($T: SpacetimeType + Deserialize<'de> + Serialize),*> View<'de, AnonymousViewContext, ($($T,)*), Retn, Elem> for Func
+        // Implement `View<AnonymousViewContext, ...>` for the tuple type `($($T,)*)`.
+        impl<'de, Func, Retn, Elem, $($T),*>
+            View<'de, AnonymousViewContext, ($($T,)*), Retn, Elem> for Func
         where
+            $($T: SpacetimeType + Deserialize<'de> + Serialize,)*
             Func: Fn(&AnonymousViewContext, $($T),*) -> Retn,
             Retn: IntoVec<Elem>,
             Elem: SpacetimeType + Serialize,
@@ -410,6 +418,7 @@ macro_rules! impl_reducer {
                 self(ctx, $($T),*)
             }
         }
+
 
     };
     // Counts the number of elements in the tuple.
@@ -707,7 +716,8 @@ extern "C" fn __call_view_anon__(id: usize, args: BytesSource, sink: BytesSink) 
     0
 }
 
-/// Called by the host to execute an anonymous view.
+/// Called by the host to execute a view when the `sender` calls the view identified by `id` with `args`.
+/// See [`__call_reducer__`] for more commentary on the arguments.
 ///
 /// The `args` is a `BytesSource`, registered on the host side,
 /// which can be read with `bytes_source_read`.
