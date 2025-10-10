@@ -260,6 +260,11 @@ macro_rules! declare_tests_with_suffix {
             fn overlapping_subscriptions() {
                 make_test("overlapping-subscriptions").run();
             }
+
+            #[test]
+            fn sorted_uuids_insert() {
+                make_test("sorted-uuids-insert").run();
+            }
         }
     };
 }

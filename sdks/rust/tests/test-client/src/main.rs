@@ -9,11 +9,11 @@ use std::sync::{Arc, Barrier, Mutex};
 use module_bindings::*;
 
 use rand::RngCore;
-use spacetimedb_sdk::TableWithPrimaryKey;
 use spacetimedb_sdk::{
     credentials, i256, u256, unstable::CallReducerFlags, Compression, ConnectionId, DbConnectionBuilder, DbContext,
     Event, Identity, ReducerEvent, Status, SubscriptionHandle, Table, TimeDuration, Timestamp,
 };
+use spacetimedb_sdk::{TableWithPrimaryKey, Uuid};
 use test_counter::TestCounter;
 
 mod simple_test_table;
@@ -133,6 +133,8 @@ fn main() {
         "indexed-simple-enum" => exec_indexed_simple_enum(),
 
         "overlapping-subscriptions" => exec_overlapping_subscriptions(),
+
+        "sorted-uuids-insert" => exec_sorted_uuids_insert(),
 
         _ => panic!("Unknown test: {test}"),
     }
@@ -1138,6 +1140,7 @@ fn every_primitive_struct() -> EveryPrimitiveStruct {
         r: ConnectionId::ZERO,
         s: Timestamp::from_micros_since_unix_epoch(9876543210),
         t: TimeDuration::from_micros(-67_419_000_000_003),
+        u: Uuid::NIL,
     }
 }
 
@@ -1163,6 +1166,7 @@ fn every_vec_struct() -> EveryVecStruct {
         r: vec![ConnectionId::ZERO],
         s: vec![Timestamp::from_micros_since_unix_epoch(9876543210)],
         t: vec![TimeDuration::from_micros(-67_419_000_000_003)],
+        u: vec![Uuid::NIL],
     }
 }
 
@@ -1502,6 +1506,7 @@ fn exec_insert_primitives_as_strings() {
                 s.r.to_string(),
                 s.s.to_string(),
                 s.t.to_string(),
+                s.u.to_string(),
             ];
 
             ctx.db.vec_string().on_insert(move |ctx, row| {
@@ -1822,6 +1827,73 @@ fn exec_subscribe_all_select_star() {
         })
         .on_error(|_, _| panic!("Subscription error"))
         .subscribe_to_all_tables();
+
+    test_counter.wait_for_all();
+}
+
+fn exec_sorted_uuids_insert() {
+    let test_counter = TestCounter::new();
+    let sub_applied_nothing_result = test_counter.add_test("sorted-uuids-insert");
+
+    let connection = connect(&test_counter);
+
+    subscribe_all_then(&connection, {
+        let test_counter = test_counter.clone();
+        let mut result = Some(test_counter.add_test("sorted-uuids-insert"));
+        move |ctx| {
+            let s = every_primitive_struct();
+
+            let strings = vec![
+                s.a.to_string(),
+                s.b.to_string(),
+                s.c.to_string(),
+                s.d.to_string(),
+                s.e.to_string(),
+                s.f.to_string(),
+                s.g.to_string(),
+                s.h.to_string(),
+                s.i.to_string(),
+                s.j.to_string(),
+                s.k.to_string(),
+                s.l.to_string(),
+                s.m.to_string(),
+                s.n.to_string(),
+                s.o.to_string(),
+                s.p.to_string(),
+                s.q.to_string(),
+                s.r.to_string(),
+                s.s.to_string(),
+                s.t.to_string(),
+                s.u.to_string(),
+            ];
+
+            ctx.db.vec_string().on_insert(move |ctx, row| {
+                if result.is_some() {
+                    let run_tests = || {
+                        assert_eq_or_bail!(strings, row.s);
+                        if !matches!(
+                            ctx.event,
+                            Event::Reducer(ReducerEvent {
+                                status: Status::Committed,
+                                reducer: Reducer::InsertPrimitivesAsStrings { .. },
+                                ..
+                            })
+                        ) {
+                            anyhow::bail!(
+                                "Unexpected Event: expected reducer InsertPrimitivesAsStrings but found {:?}",
+                                ctx.event,
+                            );
+                        }
+                        Ok(())
+                    };
+                    (result.take().unwrap())(run_tests());
+                }
+            });
+            ctx.reducers.insert_primitives_as_strings(s).unwrap();
+
+            sub_applied_nothing_result(assert_all_tables_empty(ctx))
+        }
+    });
 
     test_counter.wait_for_all();
 }
