@@ -666,6 +666,9 @@ pub use spacetimedb_bindings_macro::table;
 #[doc(inline)]
 pub use spacetimedb_bindings_macro::reducer;
 
+#[doc(inline)]
+pub use spacetimedb_bindings_macro::view;
+
 /// One of two possible types that can be passed as the first argument to a `#[view]`.
 /// The other is [`ViewContext`].
 /// Use this type if the view does not depend on the caller's identity.

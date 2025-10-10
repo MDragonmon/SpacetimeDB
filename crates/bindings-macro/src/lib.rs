@@ -39,6 +39,7 @@ mod sym {
     }
 
     symbol!(at);
+    symbol!(anonymous);
     symbol!(auto_inc);
     symbol!(btree);
     symbol!(client_connected);

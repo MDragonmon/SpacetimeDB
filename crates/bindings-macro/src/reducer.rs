@@ -140,14 +140,14 @@ pub(crate) fn reducer_impl(args: ReducerArgs, original_function: &ItemFn) -> syn
         }
         #[automatically_derived]
         impl spacetimedb::rt::FnInfo for #func_name {
-            type Ctx = ReducerContext;
             type Invoke = spacetimedb::rt::ReducerFn;
             const NAME: &'static str = #reducer_name;
             #(const LIFECYCLE: Option<spacetimedb::rt::LifecycleReducer> = Some(#lifecycle);)*
             const ARG_NAMES: &'static [Option<&'static str>] = &[#(#opt_arg_names),*];
             const INVOKE: Self::Invoke = #func_name::invoke;
-            fn push(_: &mut spacetimedb::rt::ModuleBuilder, _: Self::Invoke) {}
-            fn return_type(_typespace: &mut impl spacetimedb::sats::typespace::TypespaceBuilder) -> Option<spacetimedb::sats::AlgebraicTypeRef> {
+            fn return_type(
+                _typespace: &mut impl spacetimedb::sats::typespace::TypespaceBuilder
+            ) -> Option<spacetimedb::sats::AlgebraicType> {
                 None
             }
         }

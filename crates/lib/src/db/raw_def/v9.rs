@@ -403,7 +403,7 @@ pub struct RawViewDefV9 {
     ///
     /// Like all types in the module, this must have the [default element ordering](crate::db::default_element_ordering),
     /// UNLESS a custom ordering is declared via a `RawTypeDefv9` for this type.
-    pub return_type: AlgebraicTypeRef,
+    pub return_type: AlgebraicType,
 
     /// Currently unused, but we may want to define indexes on materialized views in the future.
     pub indexes: Vec<RawIndexDefV9>,
@@ -669,7 +669,7 @@ impl RawModuleDefV9Builder {
         name: impl Into<RawIdentifier>,
         is_anonymous: bool,
         params: ProductType,
-        return_type: AlgebraicTypeRef,
+        return_type: AlgebraicType,
     ) {
         self.module.misc_exports.push(RawMiscModuleExportV9::View(RawViewDefV9 {
             name: name.into(),
