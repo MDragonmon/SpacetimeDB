@@ -1,5 +1,5 @@
 # Incremental Migrations
-
+sadadasda
 SpacetimeDB does not provide built-in support for general schema-modifying migrations. It does, however, allow adding new tables, and changing reducers' definitions in arbitrary ways. It's possible to run general migrations using an external tool, but this is tedious, necessitates downtime, and imposes the requirement that you update all your clients at the same time as publishing your new module version.
 
 Our friends at [Lightfox Games](https://www.lightfoxgames.com/) taught us a pattern they call "incremental migrations," which mitigates all these problems, and works perfectly with SpacetimeDB's capabilities. The short version is that, instead of altering an existing table, you add a new table with the desired new schema. Whenever your module wants to access a row from that table, it first checks the new table. If the row is present in the new table, then you've already migrated, so do whatever you want to do. If the new table doesn't have the row, instead look it up in the old table, compute and insert a row for the new table, and use that. (If the row isn't present in either the old or new table, it's just not present.) If possible, you should also update the row in the old table to match any mutations that happen in the new table, so that outdated clients can still function.
