@@ -678,7 +678,7 @@ pub use spacetimedb_bindings_macro::reducer;
 /// These arguments must implement the [`SpacetimeType`], [`Serialize`], and [`Deserialize`] traits.
 /// All of these traits can be derived at once by marking a type with `#[derive(SpacetimeType)]`.
 ///
-/// Views return `Vec<T>` where `T` is a `SpacetimeType`.
+/// Views return `Vec<T>` or `Option<T>` where `T` is a `SpacetimeType`.
 ///
 /// ```no_run
 /// # mod demo {
@@ -693,12 +693,12 @@ pub use spacetimedb_bindings_macro::reducer;
 /// }
 ///
 /// #[view(public)]
-/// pub fn player(ctx: &ViewContext) -> Vec<Player> {
-///     ctx.db.player().identity().find(ctx.sender).into_iter().collect()
+/// pub fn my_player(ctx: &ViewContext) -> Option<Player> {
+///     ctx.db.player().identity().find(ctx.sender)
 /// }
 ///
 /// #[view(public, anonymous)]
-/// pub fn player(ctx: &AnonymousViewContext, level: u32) -> Vec<Player> {
+/// pub fn players_at_level(ctx: &AnonymousViewContext, level: u32) -> Vec<Player> {
 ///     ctx.db.player().level().filter(level).collect()
 /// }
 /// # }

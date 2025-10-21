@@ -18,7 +18,7 @@ error: An anonymous view must have `&AnonymousViewContext` as its first argument
 99 | fn anonymous_view_def_no_context() -> Vec<Player> {
    | ^^
 
-error: views must return `Vec<T>` where `T` is a `SpacetimeType`
+error: views must return `Vec<T>` or `Option<T>` where `T` is a `SpacetimeType`
    --> tests/ui/views.rs:117:1
     |
 117 | fn view_def_no_return(_: &ViewContext) {}
@@ -320,10 +320,10 @@ error[E0277]: invalid view signature
     |
 120 | #[view(public)]
     | --------------- required by a bound introduced by this call
-121 | fn view_def_wrong_return(_: &ViewContext) -> Option<Player> {
+121 | fn view_def_wrong_return(_: &ViewContext) -> Player {
     |    ^^^^^^^^^^^^^^^^^^^^^ this view signature is not valid
     |
-    = help: the trait `spacetimedb::rt::View<'_, _, _>` is not implemented for fn item `for<'a> fn(&'a ViewContext) -> Option<Player> {view_def_wrong_return}`
+    = help: the trait `spacetimedb::rt::View<'_, _, _>` is not implemented for fn item `for<'a> fn(&'a ViewContext) -> Player {view_def_wrong_return}`
     = note:
     = note: view signatures must match:
     = note:     `Fn(&ViewContext, [T1, ...]) -> Vec<Tn>`
@@ -335,23 +335,25 @@ note: required by a bound in `register_view`
     | pub fn register_view<'a, A, I, T>(_: impl View<'a, A, T>)
     |                                           ^^^^^^^^^^^^^^ required by this bound in `register_view`
 
-error[E0277]: Views must return `Vec<T>` where `T` is a `SpacetimeType`
+error[E0277]: Views must return `Vec<T>` or `Option<T>` where `T` is a `SpacetimeType`
    --> tests/ui/views.rs:121:46
     |
-121 | fn view_def_wrong_return(_: &ViewContext) -> Option<Player> {
-    |                                              ^^^^^^^^^^^^^^ the trait `ViewReturn` is not implemented for `Option<Player>`
+121 | fn view_def_wrong_return(_: &ViewContext) -> Player {
+    |                                              ^^^^^^ the trait `ViewReturn` is not implemented for `Player`
     |
-    = help: the trait `ViewReturn` is implemented for `Vec<T>`
+    = help: the following other types implement trait `ViewReturn`:
+              Option<T>
+              Vec<T>
 
 error[E0277]: invalid view signature
    --> tests/ui/views.rs:121:4
     |
 120 | #[view(public)]
     | --------------- required by a bound introduced by this call
-121 | fn view_def_wrong_return(_: &ViewContext) -> Option<Player> {
+121 | fn view_def_wrong_return(_: &ViewContext) -> Player {
     |    ^^^^^^^^^^^^^^^^^^^^^ this view signature is not valid
     |
-    = help: the trait `spacetimedb::rt::View<'_, _, _>` is not implemented for fn item `for<'a> fn(&'a ViewContext) -> Option<Player> {view_def_wrong_return}`
+    = help: the trait `spacetimedb::rt::View<'_, _, _>` is not implemented for fn item `for<'a> fn(&'a ViewContext) -> Player {view_def_wrong_return}`
     = note:
     = note: view signatures must match:
     = note:     `Fn(&ViewContext, [T1, ...]) -> Vec<Tn>`

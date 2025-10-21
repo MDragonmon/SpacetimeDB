@@ -118,8 +118,10 @@ fn view_def_no_return(_: &ViewContext) {}
 
 /// Must return `Vec<T>` where `T` is a SpacetimeType
 #[view(public)]
-fn view_def_wrong_return(_: &ViewContext) -> Option<Player> {
-    None
+fn view_def_wrong_return(_: &ViewContext) -> Player {
+    Player {
+        identity: Identity::ZERO,
+    }
 }
 
 fn main() {}

@@ -96,7 +96,7 @@ fn view_impl_anon(original_function: &ItemFn) -> syn::Result<TokenStream> {
     .ok_or_else(|| {
         syn::Error::new_spanned(
             original_function.sig.fn_token,
-            "views must return `Vec<T>` where `T` is a `SpacetimeType`",
+            "views must return `Vec<T>` or `Option<T>` where `T` is a `SpacetimeType`",
         )
     })?;
 
@@ -212,7 +212,7 @@ fn view_impl_client(original_function: &ItemFn) -> syn::Result<TokenStream> {
     .ok_or_else(|| {
         syn::Error::new_spanned(
             original_function.sig.fn_token,
-            "views must return `Vec<T>` where `T` is a `SpacetimeType`",
+            "views must return `Vec<T>` or `Option<T>` where `T` is a `SpacetimeType`",
         )
     })?;
 

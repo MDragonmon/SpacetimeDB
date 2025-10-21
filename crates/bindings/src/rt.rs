@@ -17,6 +17,22 @@ use std::marker::PhantomData;
 use std::sync::{Mutex, OnceLock};
 use sys::raw::{BytesSink, BytesSource};
 
+pub trait IntoVec<T> {
+    fn into_vec(self) -> Vec<T>;
+}
+
+impl<T> IntoVec<T> for Vec<T> {
+    fn into_vec(self) -> Vec<T> {
+        self
+    }
+}
+
+impl<T> IntoVec<T> for Option<T> {
+    fn into_vec(self) -> Vec<T> {
+        self.into_iter().collect()
+    }
+}
+
 /// The `sender` invokes `reducer` at `timestamp` and provides it with the given `args`.
 ///
 /// Returns an invalid buffer on success
@@ -212,12 +228,13 @@ pub trait ViewArg {
 impl<T: SpacetimeType> ViewArg for T {}
 
 /// A trait of types that can be the return type of a view.
-#[diagnostic::on_unimplemented(message = "Views must return `Vec<T>` where `T` is a `SpacetimeType`")]
+#[diagnostic::on_unimplemented(message = "Views must return `Vec<T>` or `Option<T>` where `T` is a `SpacetimeType`")]
 pub trait ViewReturn {
     #[doc(hidden)]
     const _ITEM: () = ();
 }
 impl<T: SpacetimeType> ViewReturn for Vec<T> {}
+impl<T: SpacetimeType> ViewReturn for Option<T> {}
 
 /// Assert that a reducer type-checks with a given type.
 pub const fn scheduled_reducer_typecheck<'de, Row>(_x: impl ReducerForScheduledTable<'de, Row>)
@@ -365,32 +382,34 @@ macro_rules! impl_reducer {
         }
 
         // Implement `View<..., ViewContext>` for the tuple type `($($T,)*)`.
-        impl<'de, Func, Elem, $($T),*>
+        impl<'de, Func, Elem, Retn, $($T),*>
             View<'de, ($($T,)*), Elem> for Func
         where
             $($T: SpacetimeType + Deserialize<'de> + Serialize,)*
-            Func: Fn(&ViewContext, $($T),*) -> Vec<Elem>,
+            Func: Fn(&ViewContext, $($T),*) -> Retn,
+            Retn: IntoVec<Elem>,
             Elem: SpacetimeType + Serialize,
         {
             #[allow(non_snake_case)]
             fn invoke(&self, ctx: &ViewContext, args: ($($T,)*)) -> Vec<Elem> {
                 let ($($T,)*) = args;
-                self(ctx, $($T),*)
+                self(ctx, $($T),*).into_vec()
             }
         }
 
         // Implement `View<..., AnonymousViewContext>` for the tuple type `($($T,)*)`.
-        impl<'de, Func, Elem, $($T),*>
+        impl<'de, Func, Elem, Retn, $($T),*>
             AnonymousView<'de, ($($T,)*), Elem> for Func
         where
             $($T: SpacetimeType + Deserialize<'de> + Serialize,)*
-            Func: Fn(&AnonymousViewContext, $($T),*) -> Vec<Elem>,
+            Func: Fn(&AnonymousViewContext, $($T),*) -> Retn,
+            Retn: IntoVec<Elem>,
             Elem: SpacetimeType + Serialize,
         {
             #[allow(non_snake_case)]
             fn invoke(&self, ctx: &AnonymousViewContext, args: ($($T,)*)) -> Vec<Elem> {
                 let ($($T,)*) = args;
-                self(ctx, $($T),*)
+                self(ctx, $($T),*).into_vec()
             }
         }
     };
