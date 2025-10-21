@@ -683,6 +683,7 @@ pub use spacetimedb_bindings_macro::reducer;
 /// ```no_run
 /// # mod demo {
 /// use spacetimedb::{view, table, AnonymousViewContext, ViewContext};
+/// use spacetimedb_lib::Identity;
 ///
 /// #[table(name = player)]
 /// struct Player {
